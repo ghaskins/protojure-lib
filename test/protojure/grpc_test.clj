@@ -29,7 +29,8 @@
             [example.hello :refer [new-HelloRequest pb->HelloRequest new-HelloReply pb->HelloReply]]
             [example.hello.Greeter :as greeter]
             [protojure.test.grpc.TestService.server :as test.server]
-            [protojure.test.grpc.TestService.client :as test.client])
+            [protojure.test.grpc.TestService.client :as test.client]
+            [protojure.internal.grpc.client.providers.http2.jetty :as jetty])
   (:refer-clojure :exclude [resolve]))
 
 (log/set-config! {:level :error
@@ -322,7 +323,8 @@
         (>! ic body))
       (async/close! ic))
 
-    @(-> (p/all [(jetty-client/send-request context (assoc request :input-ch ic :meta-ch mc :output-ch oc))
+    @(-> (p/all [(-> (jetty-client/send-request context (assoc request :input-ch ic :meta-ch mc :output-ch oc))
+                     (p/then (partial jetty/transmit-data-frames ic)))
                  (receive-metadata mc)
                  (receive-body oc)])
          (p/then (fn [[_ response body]]

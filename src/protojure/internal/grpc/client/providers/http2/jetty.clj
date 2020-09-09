@@ -152,16 +152,24 @@
   [stream]
   (transmit-data-frame stream (byte-array 0) true 0))
 
-(defn- transmit-data-frames
+(defn transmit-data-frames
   "Creates DATA frames from the buffers on the channel"
   [input stream]
   (when (some? input)
-    (go-loop []
-      (if-let [frame (<! input)]
-        (do
-          (transmit-data-frame stream frame)
-          (recur))
-        (transmit-eof stream)))))
+    (p/promise
+     (fn [resolve reject]
+       (go-loop []
+         (if-let [frame (<! input)]
+           (do
+             (try
+               (transmit-data-frame stream frame)
+               (catch Exception e
+                 (reject e)))
+             (recur))
+           (try
+             (resolve (transmit-eof stream))
+             (catch Exception e
+               (reject e)))))))))
 
 ;;------------------------------------------------------------------------------------
 ;; Exposed API
@@ -199,7 +207,6 @@
     (-> (jetty-promise
          (fn [p]
            (.newStream session request-frame p listener)))
-        (p/then (partial transmit-data-frames input-ch))
         (p/catch (fn [ex] (close-all! meta-ch output-ch) (throw ex))))))
 
 (defn disconnect [{:keys [^HTTP2Client client] :as context}]

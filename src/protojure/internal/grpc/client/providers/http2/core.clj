@@ -53,7 +53,7 @@
   core.async channel closure as an error, and terminate the processing once the response contains
   the :status code.
   "
-  [meta-ch request]
+  [meta-ch]
   (p/promise
    (fn [resolve reject]
      (go-loop [response {}]
@@ -132,9 +132,11 @@
           meta-ch (async/chan 32)
           output-ch (when (some? output) (async/chan input-buffer-size))]
       (-> (send-request context uri codecs content-coding metadata params input-ch meta-ch output-ch)
-          (p/then (partial receive-headers meta-ch))
-          (p/then (partial receive-payload codecs meta-ch output-ch output))
-          (p/then (fn [status]
+          (p/then (fn [stream]
+                    (p/all [(jetty/transmit-data-frames input-ch stream)
+                            (-> (receive-headers meta-ch)
+                                (p/then (partial receive-payload codecs meta-ch output-ch output)))])))
+          (p/then (fn [[_ status]]
                     (log/trace "GRPC completed:" status)
                     status))
           (p/catch (fn [ex]
